@@ -1,0 +1,12 @@
+WHITESPACE = _{ " " }
+literal = { 'a'..'u' | 'w'..'z' }
+negated = ${ "~" ~ literal }
+and = { ( expression ~ "^" ) ~ expression }
+or = { ( expression ~ "v" ) ~ expression }
+conditional = { ( expression ~ "->" ) ~ expression }
+biconditional = { ( expression ~ "<->" ) ~ expression }
+groupable = { and | or | conditional | biconditional }
+grouped = { "(" ~ groupable ~ ")" }
+// TODO: don't require each binary operation to be grouped.
+expression = { grouped | negated | literal }
+// TODO: theorem:  e.g. p,q |- (p^q)
