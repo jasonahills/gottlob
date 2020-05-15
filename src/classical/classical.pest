@@ -1,6 +1,6 @@
 WHITESPACE = _{ " " }
 literal = { 'a'..'u' | 'w'..'z' }
-negated = ${ "~" ~ literal }
+negated = ${ "~" ~ expression }
 and = { ( expression ~ "^" ) ~ expression }
 or = { ( expression ~ "v" ) ~ expression }
 conditional = { ( expression ~ "->" ) ~ expression }

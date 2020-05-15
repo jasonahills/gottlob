@@ -1,4 +1,4 @@
-pub mod expression;
+pub mod classical;
 
 #[cfg(test)]
 mod tests {

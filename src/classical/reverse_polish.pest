@@ -1,0 +1,8 @@
+WHITESPACE = _{ " " }
+literal = { 'a'..'u' | 'w'..'z' }
+negated = { "~" ~ expression }
+and = { "^" ~ expression ~ expression }
+or = { "v" ~ expression ~ expression }
+conditional = { "->" ~ expression ~ expression }
+biconditional = { "<->" ~ expression ~ expression }
+expression = { negated | and | or | conditional | biconditional | literal }

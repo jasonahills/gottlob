@@ -1,12 +1,12 @@
-use pest_derive::*;
-
 use pest::error::Error;
 use pest::Parser;
+use pest_derive::*;
 use std::collections::HashSet;
 
+pub mod reverse_polish;
 // TODO: consider `grammar_inline`
 #[derive(Parser)]
-#[grammar = "expression.pest"]
+#[grammar = "classical/classical.pest"]
 pub struct ExpressionParser;
 
 impl ExpressionParser {
