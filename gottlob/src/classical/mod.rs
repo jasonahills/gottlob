@@ -132,7 +132,7 @@ pub struct ExpressionParser;
 
 impl ExpressionParser {
   pub fn parse_expression(s: &str) -> Result<Expression, Error<Rule>> {
-    let expr = Self::parse(Rule::expr, s)?.next().unwrap();
+    let expr = Self::parse(Rule::whole_expr, s)?.next().unwrap();
     use pest::iterators::Pair;
     use pest::iterators::Pairs;
 
@@ -245,7 +245,7 @@ mod test {
 
     // TODO: Need some that are not tautologies
     // TODO: need to parse negations correctly
-    let expr = ExpressionParser::parse_expression("~(p ^ q) <-> (~p v ~q)").unwrap();
+    let expr = ExpressionParser::parse_expression("~(p ^ q) <-> ~p v ~q").unwrap();
     println!("expr {:#?}", expr);
     assert!(expr.is_tautology())
   }
