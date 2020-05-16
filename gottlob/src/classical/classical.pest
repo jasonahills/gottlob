@@ -4,7 +4,7 @@ or = { "v" }
 conditional = { "->" }
 biconditional = { "<->" }
 
-negated = { "~" ~  expr }
+negated = { "~" ~  ( grouped | negated | literal ) }
 grouped = { "(" ~ expr ~ ")" }
 term = { grouped | negated | literal }
 literal = { 'a'..'u' | 'w'..'z' }
