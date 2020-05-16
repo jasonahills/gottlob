@@ -7,7 +7,7 @@ fn main() {
   let eval = expression.eval(&vars);
   println!("vars {:?} eval {:?}", vars, eval);
 
-  let expression = ExpressionParser::parse_expression("((p ^ q) -> q)").unwrap();
+  let expression = ExpressionParser::parse_expression("p ^ q -> q ^ p").unwrap();
   // println!("expression {:#?}", expression);
   println!("expression {:#?}", expression);
   let vars = expression.variables();

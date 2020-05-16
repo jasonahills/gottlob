@@ -1,61 +1,12 @@
+use crate::util::powerset::IntoPowerSet;
+use lazy_static::*;
 use pest::error::Error;
+use pest::prec_climber::{Assoc, Operator, PrecClimber};
 use pest::Parser;
 use pest_derive::*;
 use std::collections::HashSet;
 
 pub mod reverse_polish;
-// TODO: consider `grammar_inline`
-#[derive(Parser)]
-#[grammar = "classical/classical.pest"]
-pub struct ExpressionParser;
-
-impl ExpressionParser {
-  pub fn parse_expression(s: &str) -> Result<Expression, Error<Rule>> {
-    let expr = Self::parse(Rule::expression, s)?.next().unwrap();
-    use pest::iterators::Pair;
-
-    fn parse_value(p: Pair<Rule>) -> Expression {
-      match p.as_rule() {
-        Rule::literal => {
-          let c = p.as_str().chars().next().unwrap();
-          Expression::Variable(Variable(c))
-        }
-        Rule::negated => Expression::Negated(Box::new(parse_value(
-          p.into_inner().next().expect("Negated has inner"),
-        ))),
-        Rule::and => {
-          let (left, right) = parse_two_inner(p);
-          Expression::And(left, right)
-        }
-        Rule::or => {
-          let (left, right) = parse_two_inner(p);
-          Expression::Or(left, right)
-        }
-        Rule::conditional => {
-          let (left, right) = parse_two_inner(p);
-          Expression::Conditional(left, right)
-        }
-        Rule::biconditional => {
-          let (left, right) = parse_two_inner(p);
-          Expression::Biconditional(left, right)
-        }
-        Rule::groupable => parse_value(p.into_inner().next().unwrap()),
-        Rule::grouped => parse_value(p.into_inner().next().unwrap()),
-        Rule::expression => parse_value(p.into_inner().next().unwrap()),
-        Rule::WHITESPACE => unreachable!(),
-      }
-    }
-
-    fn parse_two_inner(p: Pair<Rule>) -> (Box<Expression>, Box<Expression>) {
-      let mut inner = p.into_inner();
-      let left = Box::new(parse_value(inner.next().unwrap()));
-      let right = Box::new(parse_value(inner.next().unwrap()));
-      (left, right)
-    }
-
-    Ok(parse_value(expr))
-  }
-}
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Hash)]
 pub struct Variable(char);
@@ -92,5 +43,140 @@ impl Expression {
       Self::Conditional(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
       Self::Biconditional(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
     }
+  }
+
+  /// Uses truth-table to determine if this is a tautology.  Very inefficient if there are many variables.
+  pub fn is_tautology(&self) -> bool {
+    self.variables().powerset().any(|sub| self.eval(&sub))
+  }
+}
+
+lazy_static! {
+  static ref PREC_CLIMBER: PrecClimber<Rule> = {
+    PrecClimber::new(vec![
+      Operator::new(Rule::biconditional, Assoc::Left),
+      Operator::new(Rule::conditional, Assoc::Right),
+      Operator::new(Rule::or, Assoc::Left),
+      Operator::new(Rule::and, Assoc::Left),
+    ])
+  };
+}
+// TODO: consider `grammar_inline`
+#[derive(Parser)]
+#[grammar = "classical/classical.pest"]
+pub struct ExpressionParser;
+
+impl ExpressionParser {
+  pub fn parse_expression(s: &str) -> Result<Expression, Error<Rule>> {
+    let expr = Self::parse(Rule::expr, s)?.next().unwrap();
+    use pest::iterators::Pair;
+    use pest::iterators::Pairs;
+
+    // println!("{:#?}", expr);
+    fn with_prec(pairs: Pairs<Rule>) -> Expression {
+      PREC_CLIMBER.climb(
+        pairs,
+        |pair: Pair<Rule>| match pair.as_rule() {
+          Rule::expr => with_prec(pair.into_inner()),
+          Rule::term => with_prec(pair.into_inner()),
+          Rule::negated => Expression::Negated(Box::new(with_prec(pair.into_inner()))),
+          Rule::literal => {
+            let c = pair.as_str().chars().next().unwrap();
+            Expression::Variable(Variable(c))
+          }
+          Rule::grouped => with_prec(pair.into_inner()),
+          _ => {
+            // println!("pair {:#?}", pair);
+            unreachable!()
+          }
+        },
+        |lhs: Expression, op: Pair<Rule>, rhs: Expression| match op.as_rule() {
+          Rule::and => Expression::And(Box::new(lhs), Box::new(rhs)),
+          Rule::or => Expression::Or(Box::new(lhs), Box::new(rhs)),
+          Rule::conditional => Expression::Conditional(Box::new(lhs), Box::new(rhs)),
+          Rule::biconditional => Expression::Biconditional(Box::new(lhs), Box::new(rhs)),
+          _ => {
+            // println!("op {:#?}", op);
+            unreachable!()
+          }
+        },
+      )
+    }
+
+    Ok(with_prec(expr.into_inner()))
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  #[test]
+  fn test_parens_or_no() {
+    assert_eq!(
+      ExpressionParser::parse_expression("(p)").unwrap(),
+      ExpressionParser::parse_expression("p").unwrap()
+    );
+    assert_eq!(
+      ExpressionParser::parse_expression("(p ^ q)").unwrap(),
+      ExpressionParser::parse_expression("p ^ q").unwrap()
+    );
+  }
+
+  #[test]
+  fn test_order_of_operations() {
+    use Expression::*;
+    assert_eq!(
+      ExpressionParser::parse_expression("a ^ b v c -> d <-> e").unwrap(),
+      Biconditional(
+        Box::new(Conditional(
+          Box::new(Or(
+            Box::new(And(
+              Box::new(Variable(super::Variable('a'))),
+              Box::new(Variable(super::Variable('b')))
+            )),
+            Box::new(Variable(super::Variable('c')))
+          )),
+          Box::new(Variable(super::Variable('d')))
+        )),
+        Box::new(Variable(super::Variable('e')))
+      ),
+      "correct precedence"
+    );
+    assert_eq!(
+      ExpressionParser::parse_expression("a <-> b -> c v d ^ e").unwrap(),
+      Biconditional(
+        Box::new(Variable(super::Variable('a'))),
+        Box::new(Conditional(
+          Box::new(Variable(super::Variable('b'))),
+          Box::new(Or(
+            Box::new(Variable(super::Variable('c'))),
+            Box::new(And(
+              Box::new(Variable(super::Variable('d'))),
+              Box::new(Variable(super::Variable('e')))
+            )),
+          )),
+        )),
+      ),
+      "correct precedence"
+    );
+
+    assert_eq!(
+      ExpressionParser::parse_expression("(p -> (q -> r))").unwrap(),
+      ExpressionParser::parse_expression("p -> q -> r").unwrap(),
+      "conditional should be right-associative"
+    );
+  }
+
+  #[test]
+  fn test_grouping_overrides_ooo() {}
+
+  #[test]
+  fn test_some_tautologies() {
+    assert!(ExpressionParser::parse_expression("p ^ q -> p")
+      .unwrap()
+      .is_tautology());
+    assert!(ExpressionParser::parse_expression("p v ~p")
+      .unwrap()
+      .is_tautology());
   }
 }

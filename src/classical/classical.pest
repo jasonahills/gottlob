@@ -1,12 +1,16 @@
-WHITESPACE = _{ " " }
+binary_op = _{ and | or | conditional | biconditional }
+and = { "^" }
+or = { "v" }
+conditional = { "->" }
+biconditional = { "<->" }
+
+negated = { "~" ~  expr }
+grouped = { "(" ~ expr ~ ")" }
+term = { grouped | negated | literal }
 literal = { 'a'..'u' | 'w'..'z' }
-negated = ${ "~" ~ expression }
-and = { ( expression ~ "^" ) ~ expression }
-or = { ( expression ~ "v" ) ~ expression }
-conditional = { ( expression ~ "->" ) ~ expression }
-biconditional = { ( expression ~ "<->" ) ~ expression }
-groupable = { and | or | conditional | biconditional }
-grouped = { "(" ~ groupable ~ ")" }
-// TODO: don't require each binary operation to be grouped.
-expression = { grouped | negated | literal }
-// TODO: theorem:  e.g. p,q |- (p^q)
+
+expr = { term ~ (binary_op ~ term)* }
+
+whole_expr = _{ SOI ~ expr ~ EOI }
+
+WHITESPACE = _{ " " | "\t" }

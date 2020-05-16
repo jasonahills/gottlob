@@ -1,4 +1,5 @@
 pub mod classical;
+mod util;
 
 #[cfg(test)]
 mod tests {
