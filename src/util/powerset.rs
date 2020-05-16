@@ -67,5 +67,39 @@ mod test {
 
     let set = [1, 2, 3, 4].into_iter().collect::<HashSet<_>>();
     assert_eq!(set.powerset().count(), 16);
+
+    let set = [1_u8, 2, 3].into_iter().collect::<HashSet<_>>();
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == HashSet::new())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [1].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [2].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [3].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [1, 2].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [2, 3].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [1, 3].into_iter().collect())
+      .is_some());
+    assert!(set
+      .powerset()
+      .find(|s| s.clone() == [1, 2, 3].into_iter().collect())
+      .is_some());
   }
 }

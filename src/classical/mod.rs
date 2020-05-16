@@ -47,7 +47,7 @@ impl Expression {
 
   /// Uses truth-table to determine if this is a tautology.  Very inefficient if there are many variables.
   pub fn is_tautology(&self) -> bool {
-    self.variables().powerset().any(|sub| self.eval(&sub))
+    self.variables().powerset().all(|sub| self.eval(&sub))
   }
 }
 
