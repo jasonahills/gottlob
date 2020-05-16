@@ -1,12 +1,6 @@
-[package]
-name = "gottlob"
-version = "0.1.0"
-authors = ["Jason Hills <jasonahills@gmail.com>"]
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-lazy_static = "*"
-pest = "*"
-pest_derive = "*"
+members = [
+  "gottlob",
+  "gottlob_web",
+]
