@@ -4,13 +4,20 @@ or = { "v" | " or " | "|" }
 conditional = { "->" | " then " }
 biconditional = { "<->" | " iff " }
 
-negated = { ("~" | "not ") ~  ( grouped | negated | literal ) }
+negated = { ("~" | "not ") ~ term }
+necessary = { ("[]" ~ term ) }
+possible = { ("<>" ~ term ) }
 grouped = { "(" ~ expr ~ ")" }
-term = { grouped | negated | literal }
+term = { grouped | negated | necessary | possible | literal }
 literal = { 'a'..'u' | 'w'..'z' }
 
 expr = { term ~ (binary_op ~ term)* }
-
 whole_expr = _{ SOI ~ expr ~ EOI }
+
+// TODO: `|/-`
+proves = { "|-" }
+does_not_prove = { "|/-" }
+theorem = { (expr ~ ("," ~ expr)*)? ~ (proves | does_not_prove ) ~ expr }
+whole_theorem = _{ SOI ~ theorem ~ EOI }
 
 WHITESPACE = _{ " " | "\t" }

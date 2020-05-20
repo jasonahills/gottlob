@@ -1,13 +1,9 @@
-use crate::util::powerset::IntoPowerSet;
 use lazy_static::*;
 use pest::error::Error;
 use pest::prec_climber::{Assoc, Operator, PrecClimber};
 use pest::Parser;
 use pest_derive::*;
-use std::collections::HashSet;
 use strum_macros::*;
-
-pub mod reverse_polish;
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Clone, Copy, Hash)]
 pub struct Variable(char);
@@ -27,64 +23,29 @@ pub enum Expression {
   Or(Box<Expression>, Box<Expression>),
   Conditional(Box<Expression>, Box<Expression>),
   Biconditional(Box<Expression>, Box<Expression>),
+  Necessary(Box<Expression>),
+  Possible(Box<Expression>),
 }
 
 impl Expression {
-  pub fn eval(&self, trues: &HashSet<Variable>) -> bool {
-    match self {
-      Self::Variable(v) => trues.contains(&v),
-      Self::Negated(e) => !e.eval(trues),
-      Self::And(e1, e2) => e1.eval(trues) && e2.eval(trues),
-      Self::Or(e1, e2) => e1.eval(trues) || e2.eval(trues),
-      Self::Conditional(e1, e2) => !e1.eval(trues) || e2.eval(trues),
-      Self::Biconditional(e1, e2) => e1.eval(trues) == e2.eval(trues),
-    }
-  }
-
-  // TODO: make more efficient if necessary
-  pub fn variables(&self) -> HashSet<Variable> {
-    match self {
-      Self::Variable(v) => [*v].into_iter().cloned().collect::<HashSet<Variable>>(),
-      Self::Negated(e) => e.variables(),
-      Self::And(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
-      Self::Or(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
-      Self::Conditional(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
-      Self::Biconditional(e1, e2) => e1.variables().union(&e2.variables()).cloned().collect(),
-    }
-  }
-
-  /// Uses truth-table to determine if this is a tautology.  Very inefficient if there are many variables.
-  pub fn is_tautology(&self) -> bool {
-    self.variables().powerset().all(|sub| self.eval(&sub))
-  }
-
-  fn is_variable(&self) -> bool {
-    ExpressionDiscriminants::from(self) == ExpressionDiscriminants::Variable
-  }
-
-  fn is_negated(&self) -> bool {
-    ExpressionDiscriminants::from(self) == ExpressionDiscriminants::Negated
-  }
-
-  // fn is_and(&self) -> bool {
-  //   ExpressionDiscriminants::from(self) == ExpressionDiscriminants::And
-  // }
-
-  // fn is_or(&self) -> bool {
-  //   ExpressionDiscriminants::from(self) == ExpressionDiscriminants::Or
-  // }
-
-  // fn is_conditional(&self) -> bool {
-  //   ExpressionDiscriminants::from(self) == ExpressionDiscriminants::Conditional
-  // }
-
-  // fn is_biconditional(&self) -> bool {
-  //   ExpressionDiscriminants::from(self) == ExpressionDiscriminants::Biconditional
-  // }
-
+  // TODO: consider being more DRY with these flattening functions
   fn flatten_and(&self) -> Vec<&Self> {
     match self {
       Expression::And(e1, e2) => [e1.flatten_and(), e2.flatten_and()].concat(),
+      e => vec![e],
+    }
+  }
+
+  fn flatten_or(&self) -> Vec<&Self> {
+    match self {
+      Expression::Or(e1, e2) => [e1.flatten_or(), e2.flatten_or()].concat(),
+      e => vec![e],
+    }
+  }
+
+  fn flatten_biconditional(&self) -> Vec<&Self> {
+    match self {
+      Expression::Biconditional(e1, e2) => [e1.flatten_biconditional(), e2.flatten_biconditional()].concat(),
       e => vec![e],
     }
   }
@@ -93,12 +54,11 @@ impl Expression {
 impl std::fmt::Display for Expression {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match self {
-      // TODO: do these without automatically grouping them.
       // TODO: no parens on outermost
-      // TODO: use cooler unicode chars
       Self::Variable(v) => write!(f, "{}", v),
-      Self::Negated(e) if e.is_variable() || e.is_negated() => write!(f, "¬{}", e),
-      Self::Negated(e) => write!(f, "¬{}", e),  // TODO: do I need this after all?
+      Self::Negated(e) => write!(f, "¬{}", e),
+      Self::Necessary(e) => write!(f, "◻{}", e),
+      Self::Possible(e) => write!(f, "◇{}", e),
       e @ Self::And(_, _) => write!(
         f,
         "({})",
@@ -108,10 +68,49 @@ impl std::fmt::Display for Expression {
           .collect::<Vec<_>>()
           .join(" ∧ ")
       ),
-      Self::Or(e1, e2) => write!(f, "({} ∨ {})", e1, e2),
+      e @ Self::Or(_, _) => write!(
+        f,
+        "({})",
+        e.flatten_or()
+          .iter()
+          .map(|e| format!("{}", e))
+          .collect::<Vec<_>>()
+          .join(" ∨ ")
+      ),
+      e @ Self::Biconditional(_, _) => write!(
+        f,
+        "({})",
+        e.flatten_biconditional()
+          .iter()
+          .map(|e| format!("{}", e))
+          .collect::<Vec<_>>()
+          .join(" ↔ ")
+      ),
       Self::Conditional(e1, e2) => write!(f, "({} → {})", e1, e2),
-      Self::Biconditional(e1, e2) => write!(f, "({} ↔ {})", e1, e2),
     }
+  }
+}
+
+#[derive(Debug)]
+pub enum Theorem {
+  Proves { 
+    assumptions: Vec<Expression>,
+    conclusion: Expression,
+  },
+  DoesNotProve {
+    assumptions: Vec<Expression>,
+    conclusion: Expression,
+  }
+}
+
+impl std::fmt::Display for Theorem {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    let (assumptions, conclusion, op) = match self {
+      Self::Proves{assumptions, conclusion} => (assumptions, conclusion, "⊢"),
+      Self::DoesNotProve{assumptions, conclusion} => (assumptions, conclusion, "⊬"),
+    };
+    let assumptions = assumptions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
+    write!(f, "{} {} {}", assumptions, op, conclusion)
   }
 }
 
@@ -125,14 +124,42 @@ lazy_static! {
     ])
   };
 }
+
 // TODO: consider `grammar_inline`
 #[derive(Parser)]
-#[grammar = "classical/classical.pest"]
-pub struct ExpressionParser;
+#[grammar = "modal/modal.pest"]
+pub struct ModalParser;
 
-impl ExpressionParser {
+impl ModalParser {
+  pub fn parse_theorem(s: &str) -> Result<Theorem, Error<Rule>> {
+    let thm = Self::parse(Rule::whole_theorem, s)?.next().unwrap();
+    let mut inner = thm.into_inner().collect::<Vec<_>>();
+    let conclusion = Self::handle_expression_parse_tree(inner.pop().expect("always has a conclusion"));
+    let proves = Self::handle_theorem_op_parse_tree(inner.pop().expect("always has an op"));
+    let assumptions = inner.into_iter().map(|expr| Self::handle_expression_parse_tree(expr)).collect::<Vec<_>>();
+    if proves {
+      Ok(Theorem::Proves { assumptions, conclusion })
+    } else {
+      Ok(Theorem::DoesNotProve { assumptions, conclusion })
+    }
+  }
+
   pub fn parse_expression(s: &str) -> Result<Expression, Error<Rule>> {
     let expr = Self::parse(Rule::whole_expr, s)?.next().unwrap();
+    Ok(Self::handle_expression_parse_tree(expr))
+  }
+
+  /// You _must give this the parse tree for a theorem op.
+  fn handle_theorem_op_parse_tree(expr_tree: pest::iterators::Pair<Rule>) -> bool {
+    match expr_tree.as_rule() {
+      Rule::proves => true,
+      Rule::does_not_prove => false,
+      _ => panic!("parse tree must be for a theorem op")
+    }
+  }
+
+  /// You _must_ give this the parse tree for an expression.
+  fn handle_expression_parse_tree(expr_tree: pest::iterators::Pair<Rule>) -> Expression {
     use pest::iterators::Pair;
     use pest::iterators::Pairs;
 
@@ -144,6 +171,8 @@ impl ExpressionParser {
           Rule::expr => with_prec(pair.into_inner()),
           Rule::term => with_prec(pair.into_inner()),
           Rule::negated => Expression::Negated(Box::new(with_prec(pair.into_inner()))),
+          Rule::necessary => Expression::Necessary(Box::new(with_prec(pair.into_inner()))),
+          Rule::possible => Expression::Possible(Box::new(with_prec(pair.into_inner()))),
           Rule::literal => {
             let c = pair.as_str().chars().next().unwrap();
             Expression::Variable(Variable(c))
@@ -167,7 +196,7 @@ impl ExpressionParser {
       )
     }
 
-    Ok(with_prec(expr.into_inner()))
+    with_prec(expr_tree.into_inner())
   }
 }
 
@@ -177,12 +206,12 @@ mod test {
   #[test]
   fn test_parens_or_no() {
     assert_eq!(
-      ExpressionParser::parse_expression("(p)").unwrap(),
-      ExpressionParser::parse_expression("p").unwrap()
+      ModalParser::parse_expression("(p)").unwrap(),
+      ModalParser::parse_expression("p").unwrap()
     );
     assert_eq!(
-      ExpressionParser::parse_expression("(p ^ q)").unwrap(),
-      ExpressionParser::parse_expression("p ^ q").unwrap()
+      ModalParser::parse_expression("(p ^ q)").unwrap(),
+      ModalParser::parse_expression("p ^ q").unwrap()
     );
   }
 
@@ -190,7 +219,7 @@ mod test {
   fn test_order_of_operations() {
     use Expression::*;
     assert_eq!(
-      ExpressionParser::parse_expression("a ^ b v c -> d <-> e").unwrap(),
+      ModalParser::parse_expression("a ^ b v c -> d <-> e").unwrap(),
       Biconditional(
         Box::new(Conditional(
           Box::new(Or(
@@ -207,7 +236,7 @@ mod test {
       "correct precedence"
     );
     assert_eq!(
-      ExpressionParser::parse_expression("a <-> b -> c v d ^ e").unwrap(),
+      ModalParser::parse_expression("a <-> b -> c v d ^ e").unwrap(),
       Biconditional(
         Box::new(Variable(super::Variable('a'))),
         Box::new(Conditional(
@@ -225,8 +254,8 @@ mod test {
     );
 
     assert_eq!(
-      ExpressionParser::parse_expression("(p -> (q -> r))").unwrap(),
-      ExpressionParser::parse_expression("p -> q -> r").unwrap(),
+      ModalParser::parse_expression("(p -> (q -> r))").unwrap(),
+      ModalParser::parse_expression("p -> q -> r").unwrap(),
       "conditional should be right-associative"
     );
   }
@@ -236,17 +265,13 @@ mod test {
 
   #[test]
   fn test_some_tautologies() {
-    assert!(ExpressionParser::parse_expression("p ^ q -> p")
-      .unwrap()
-      .is_tautology());
-    assert!(ExpressionParser::parse_expression("p v ~p")
-      .unwrap()
-      .is_tautology());
 
-    // TODO: Need some that are not tautologies
-    // TODO: need to parse negations correctly
-    let expr = ExpressionParser::parse_expression("~(p ^ q) <-> ~p v ~q").unwrap();
-    println!("expr {:#?}", expr);
-    assert!(expr.is_tautology())
+  }
+
+  #[test]
+  fn test_parse_theorem() {
+    ModalParser::parse_theorem("p,q|-p^q").unwrap();
+    ModalParser::parse_theorem("p, q |- p ^ q").unwrap();
+    ModalParser::parse_theorem("[]p, []q |- [](p ^ q)").unwrap();
   }
 }
