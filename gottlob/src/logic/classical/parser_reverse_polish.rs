@@ -1,13 +1,13 @@
-use super::{Expression, Variable};
 use pest::error::Error;
 use pest::Parser;
 use pest_derive::*;
+use super::{Expression, Variable};
 
 #[derive(Parser)]
-#[grammar = "classical/reverse_polish.pest"]
-pub struct RpParser;
+#[grammar = "logic/classical/grammar_reverse_polish.pest"]
+pub struct ClassicalRpParser;
 
-impl RpParser {
+impl ClassicalRpParser {
   pub fn parse_expression(s: &str) -> Result<Expression, Error<Rule>> {
     let expr = Self::parse(Rule::expression, s)?.next().unwrap();
     use pest::iterators::Pair;

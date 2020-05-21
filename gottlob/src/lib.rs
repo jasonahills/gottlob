@@ -1,3 +1,2 @@
-pub mod classical;
-pub mod modal;
+pub mod logic;
 mod util;

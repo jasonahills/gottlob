@@ -5,6 +5,9 @@ use wasm_bindgen::prelude::*;
 use yew::web_sys::HtmlInputElement;
 use yew::prelude::*;
 use log::*;
+use gottlob::logic::Logic;
+use gottlob::logic::classical::ClassicalLogic;
+use gottlob::logic::modal::ModalLogic;
 
 #[derive(CustomDebug)]
 struct Repl {
@@ -65,9 +68,11 @@ Try a sentence like '~(p ^ q) <-> ~p v ~q'!".to_owned()],
           return true;
         }
         // TODO: better error display.
-        let response = gottlob::modal::ModalParser::parse_theorem(&command).map(|expr| format!("{}", expr)).unwrap_or_else(|e| format!("{:?}", e));
+        let classical_rs = ClassicalLogic.is_valid_theorem(&command).unwrap_or_else(|e| (format!("invalid classical parse {:?}", e), false));
+        let modal_rs = ModalLogic.is_valid_theorem(&command).unwrap_or_else(|e| (format!("invalid modal parse {:?}",e ), false));
         // TODO: ensure that this prompt will match the one the user uses.
-        self.terminal.push(response);
+        self.terminal.push(classical_rs.0);
+        self.terminal.push(modal_rs.0);
         self.history.push(command);
       },
       Msg::TerminalClicked => {

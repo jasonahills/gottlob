@@ -1,4 +1,4 @@
-use gottlob::classical;
+use gottlob::logic::*;
 use structopt::*;
 
 #[derive(Debug, StructOpt)]
